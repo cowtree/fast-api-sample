@@ -1,2 +1,2 @@
 # fast-api-sample
-Fast API server,  MongoDB, Docker
+Fast API server,  PostgreSQL, Docker
