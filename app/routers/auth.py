@@ -18,23 +18,28 @@ ACCESS_TOKEN_EXPIRES_IN = settings.ACCESS_TOKEN_EXPIRES_IN
 REFRESH_TOKEN_EXPIRES_IN = settings.REFRESH_TOKEN_EXPIRES_IN
 
 
-@router.post('/register', status_code=status.HTTP_201_CREATED)
-async def create_user(payload: schemas.CreateUserSchema, request: Request, db: Session = Depends(get_db)):
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def create_user(
+    payload: schemas.CreateUserSchema, request: Request, db: Session = Depends(get_db)
+):
     # Check if user already exist
     user_query = db.query(models.User).filter(
-        models.User.email == EmailStr(payload.email.lower()))
+        models.User.email == EmailStr(payload.email.lower())
+    )
     user = user_query.first()
     if user:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail='Account already exist')
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Account already exist"
+        )
     # Compare password and passwordConfirm
     if payload.password != payload.passwordConfirm:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail='Passwords do not match')
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Passwords do not match"
+        )
     #  Hash the password
     payload.password = utils.hash_password(payload.password)
     del payload.passwordConfirm
-    payload.role = 'user'
+    payload.role = "user"
     payload.verified = False
     payload.email = EmailStr(payload.email.lower())
     new_user = models.User(**payload.dict())
@@ -49,113 +54,196 @@ async def create_user(payload: schemas.CreateUserSchema, request: Request, db: S
         hashedCode.update(token)
         verification_code = hashedCode.hexdigest()
         user_query.update(
-            {'verification_code': verification_code}, synchronize_session=False)
+            {"verification_code": verification_code}, synchronize_session=False
+        )
         db.commit()
         url = f"{request.url.scheme}://{request.client.host}:{request.url.port}/api/auth/verifyemail/{token.hex()}"
         await Email(new_user, url, [payload.email]).sendVerificationCode()
     except Exception as error:
-        print('Error', error)
-        user_query.update(
-            {'verification_code': None}, synchronize_session=False)
+        print("Error", error)
+        user_query.update({"verification_code": None}, synchronize_session=False)
         db.commit()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail='There was an error sending email')
-    return {'status': 'success', 'message': 'Verification token successfully sent to your email'}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="There was an error sending email",
+        )
+    return {
+        "status": "success",
+        "message": "Verification token successfully sent to your email",
+    }
 
 
-@router.post('/login')
-def login(payload: schemas.LoginUserSchema, response: Response, db: Session = Depends(get_db), Authorize: AuthJWT = Depends()):
+@router.post("/login")
+def login(
+    payload: schemas.LoginUserSchema,
+    response: Response,
+    db: Session = Depends(get_db),
+    Authorize: AuthJWT = Depends(),
+):
     # Check if the user exist
-    user = db.query(models.User).filter(
-        models.User.email == EmailStr(payload.email.lower())).first()
+    user = (
+        db.query(models.User)
+        .filter(models.User.email == EmailStr(payload.email.lower()))
+        .first()
+    )
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail='Incorrect Email or Password')
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect Email or Password",
+        )
 
     # Check if user verified his email
     if not user.verified:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail='Please verify your email address')
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Please verify your email address",
+        )
 
     # Check if the password is valid
     if not utils.verify_password(payload.password, user.password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail='Incorrect Email or Password')
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect Email or Password",
+        )
 
     # Create access token
     access_token = Authorize.create_access_token(
-        subject=str(user.id), expires_time=timedelta(minutes=ACCESS_TOKEN_EXPIRES_IN))
+        subject=str(user.id), expires_time=timedelta(minutes=ACCESS_TOKEN_EXPIRES_IN)
+    )
 
     # Create refresh token
     refresh_token = Authorize.create_refresh_token(
-        subject=str(user.id), expires_time=timedelta(minutes=REFRESH_TOKEN_EXPIRES_IN))
+        subject=str(user.id), expires_time=timedelta(minutes=REFRESH_TOKEN_EXPIRES_IN)
+    )
 
     # Store refresh and access tokens in cookie
-    response.set_cookie('access_token', access_token, ACCESS_TOKEN_EXPIRES_IN * 60,
-                        ACCESS_TOKEN_EXPIRES_IN * 60, '/', None, False, True, 'lax')
-    response.set_cookie('refresh_token', refresh_token,
-                        REFRESH_TOKEN_EXPIRES_IN * 60, REFRESH_TOKEN_EXPIRES_IN * 60, '/', None, False, True, 'lax')
-    response.set_cookie('logged_in', 'True', ACCESS_TOKEN_EXPIRES_IN * 60,
-                        ACCESS_TOKEN_EXPIRES_IN * 60, '/', None, False, False, 'lax')
+    response.set_cookie(
+        "access_token",
+        access_token,
+        ACCESS_TOKEN_EXPIRES_IN * 60,
+        ACCESS_TOKEN_EXPIRES_IN * 60,
+        "/",
+        None,
+        False,
+        True,
+        "lax",
+    )
+    response.set_cookie(
+        "refresh_token",
+        refresh_token,
+        REFRESH_TOKEN_EXPIRES_IN * 60,
+        REFRESH_TOKEN_EXPIRES_IN * 60,
+        "/",
+        None,
+        False,
+        True,
+        "lax",
+    )
+    response.set_cookie(
+        "logged_in",
+        "True",
+        ACCESS_TOKEN_EXPIRES_IN * 60,
+        ACCESS_TOKEN_EXPIRES_IN * 60,
+        "/",
+        None,
+        False,
+        False,
+        "lax",
+    )
 
     # Send both access
-    return {'status': 'success', 'access_token': access_token}
+    return {"status": "success", "access_token": access_token}
 
 
-@router.get('/refresh')
-def refresh_token(response: Response, request: Request, Authorize: AuthJWT = Depends(), db: Session = Depends(get_db)):
+@router.get("/refresh")
+def refresh_token(
+    response: Response,
+    request: Request,
+    Authorize: AuthJWT = Depends(),
+    db: Session = Depends(get_db),
+):
     try:
         Authorize.jwt_refresh_token_required()
 
         user_id = Authorize.get_jwt_subject()
         if not user_id:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                                detail='Could not refresh access token')
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not refresh access token",
+            )
         user = db.query(models.User).filter(models.User.id == user_id).first()
         if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                                detail='The user belonging to this token no logger exist')
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="The user belonging to this token no logger exist",
+            )
         access_token = Authorize.create_access_token(
-            subject=str(user.id), expires_time=timedelta(minutes=ACCESS_TOKEN_EXPIRES_IN))
+            subject=str(user.id),
+            expires_time=timedelta(minutes=ACCESS_TOKEN_EXPIRES_IN),
+        )
     except Exception as e:
         error = e.__class__.__name__
-        if error == 'MissingTokenError':
+        if error == "MissingTokenError":
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail='Please provide refresh token')
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please provide refresh token",
+            )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
-    response.set_cookie('access_token', access_token, ACCESS_TOKEN_EXPIRES_IN * 60,
-                        ACCESS_TOKEN_EXPIRES_IN * 60, '/', None, False, True, 'lax')
-    response.set_cookie('logged_in', 'True', ACCESS_TOKEN_EXPIRES_IN * 60,
-                        ACCESS_TOKEN_EXPIRES_IN * 60, '/', None, False, False, 'lax')
-    return {'access_token': access_token}
+    response.set_cookie(
+        "access_token",
+        access_token,
+        ACCESS_TOKEN_EXPIRES_IN * 60,
+        ACCESS_TOKEN_EXPIRES_IN * 60,
+        "/",
+        None,
+        False,
+        True,
+        "lax",
+    )
+    response.set_cookie(
+        "logged_in",
+        "True",
+        ACCESS_TOKEN_EXPIRES_IN * 60,
+        ACCESS_TOKEN_EXPIRES_IN * 60,
+        "/",
+        None,
+        False,
+        False,
+        "lax",
+    )
+    return {"access_token": access_token}
 
 
-@router.get('/logout', status_code=status.HTTP_200_OK)
-def logout(response: Response, Authorize: AuthJWT = Depends(), user_id: str = Depends(oauth2.require_user)):
+@router.get("/logout", status_code=status.HTTP_200_OK)
+def logout(
+    response: Response,
+    Authorize: AuthJWT = Depends(),
+    user_id: str = Depends(oauth2.require_user),
+):
     Authorize.unset_jwt_cookies()
-    response.set_cookie('logged_in', '', -1)
+    response.set_cookie("logged_in", "", -1)
 
-    return {'status': 'success'}
+    return {"status": "success"}
 
 
-@router.get('/verifyemail/{token}')
+@router.get("/verifyemail/{token}")
 def verify_me(token: str, db: Session = Depends(get_db)):
     hashedCode = hashlib.sha256()
     hashedCode.update(bytes.fromhex(token))
     verification_code = hashedCode.hexdigest()
     user_query = db.query(models.User).filter(
-        models.User.verification_code == verification_code)
+        models.User.verification_code == verification_code
+    )
     db.commit()
     user = user_query.first()
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail='Email can only be verified once')
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email can only be verified once",
+        )
     user_query.update(
-        {'verified': True, 'verification_code': None}, synchronize_session=False)
+        {"verified": True, "verification_code": None}, synchronize_session=False
+    )
     db.commit()
-    return {
-        "status": "success",
-        "message": "Account verified successfully"
-    }
+    return {"status": "success", "message": "Account verified successfully"}

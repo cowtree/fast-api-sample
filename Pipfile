@@ -10,11 +10,15 @@ sqlalchemy = "1.4.41"
 psycopg2 = "2.9.3"
 python-dotenv = "*"
 email-validator = "*"
-fastapi-jwt-auth = "*"
+fastapi-jwt-auth = {extras = ["asymmetric"], version = "*"}
 passlib = "*"
 fastapi-mail = "*"
 jinja2 = "*"
 alembic = "*"
+aioredis = "*"
+httpx = "*"
+bcrypt = "*"
+
 
 [scripts]
 test = "pytest"

@@ -26,3 +26,10 @@ app.include_router(post.router, tags=["Posts"], prefix="/api/posts")
 @app.get("/api/v1/hello")
 def root():
     return {"message": "Hello World"}
+
+
+@app.websocket("/api/v1/ws")
+async def websocket_endpoint(websocket):
+    await websocket.accept()
+    await websocket.send_json({"message": "Hello WebSocket"})
+    await websocket.close()
