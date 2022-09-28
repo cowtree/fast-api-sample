@@ -7,7 +7,8 @@ This is a sample project to show how to use Fast API server (with REST) and Post
 # Techstack
 - SQLAlchemy for ORM, Alembic for data migration
 - JWT authentication
-- REST API
+- FastAPI with REST API
+- 
 
 # Additional things to do prior to starting
 
@@ -59,7 +60,6 @@ This is a sample project to show how to use Fast API server (with REST) and Post
 - In the virtual environment install dependencies `pipenv install`
 - Run `uvicorn app.main:app --host localhost --port 8000 --reload` to start the REST API server
 
-- Run `alembic upgrade head` to create tables in the database
 
 # Learnings
 - [SQL Alchemy - declarative mapping](https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#orm-declarative-mapping)
